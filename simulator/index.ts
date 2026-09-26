@@ -3,6 +3,7 @@ import { WebSocket } from "ws";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createServer } from "http";
 
 type RobotStatus =
   | "idle"
@@ -250,3 +251,17 @@ async function pollConfig(): Promise<void> {
 setInterval(pollConfig, 5000);
 
 console.log(`simulator running: ${FLEET_SIZE} robots, update every ${UPDATE_INTERVAL_MS}ms -> ${WS_URL}`);
+
+// The simulator itself has no HTTP surface — it's purely an outbound
+// WebSocket client. But hosting platforms with a free tier for "web
+// services" (vs. a paid-only background worker tier) require something
+// listening on $PORT to pass health checks. Only binds when PORT is set
+// (e.g. by the host), so local dev — which never sets PORT here — is
+// unaffected and behaves exactly as before.
+if (process.env.PORT) {
+  const port = Number(process.env.PORT);
+  createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(`simulator running: ${robots.length} robots`);
+  }).listen(port, () => console.log(`health check endpoint listening on ${port}`));
+}
