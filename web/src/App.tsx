@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Box, Paper, Stack } from "@mui/material";
+import { Box, Paper, Stack, CircularProgress, Typography } from "@mui/material";
 import { useFleetSocket } from "./hooks/useFleetSocket";
 import { Header } from "./components/Header";
 import { SiteMap } from "./components/SiteMap";
@@ -12,7 +12,7 @@ import { ActivityChart } from "./components/ActivityChart";
 import { LiveConfig } from "./components/LiveConfig";
 
 export function App() {
-  const { robots, history, connected, applyConfig } = useFleetSocket();
+  const { robots, history, connected, hasSnapshot, applyConfig } = useFleetSocket();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedRobot = useMemo(
@@ -34,7 +34,29 @@ export function App() {
           sx={{ flex: { xs: "1 1 auto", md: "2 1 620px" }, width: "100%", minWidth: 0 }}
         >
           <Paper variant="outlined" sx={{ p: 2 }}>
-            <SiteMap robots={robots} selectedId={selectedId} />
+            <Box sx={{ position: "relative" }}>
+              <SiteMap robots={robots} selectedId={selectedId} />
+              {!hasSnapshot && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 1.5,
+                    bgcolor: "rgba(13, 17, 23, 0.85)",
+                    borderRadius: 1,
+                  }}
+                >
+                  <CircularProgress size={28} />
+                  <Typography variant="body2" color="text.secondary">
+                    Connecting to fleet…
+                  </Typography>
+                </Box>
+              )}
+            </Box>
             <StatusLegend />
           </Paper>
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -53,7 +75,7 @@ export function App() {
             overflowY: "auto",
           }}
         >
-          <AttentionList robots={robots} selectedId={selectedId} onSelect={setSelectedId} />
+          <AttentionList robots={robots} selectedId={selectedId} onSelect={setSelectedId} hasSnapshot={hasSnapshot} />
           <Box sx={{ mt: 2 }}>
             <RobotList robots={robots} selectedId={selectedId} onSelect={setSelectedId} />
           </Box>

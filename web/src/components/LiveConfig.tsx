@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Typography, TextField, Button, Stack, Paper, Snackbar, Alert } from "@mui/material";
 import TuneIcon from "@mui/icons-material/Tune";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
@@ -9,13 +9,11 @@ interface Props {
 }
 
 export function LiveConfig({ applyConfig }: Props) {
-  const [token, setToken] = useState(() => {
-    try {
-      return localStorage.getItem("adminToken") || "";
-    } catch {
-      return "";
-    }
-  });
+  // No localStorage here on purpose — that would store the password in plain
+  // text, readable by any JS on the page. Letting the browser's own password
+  // manager offer to remember it (via autoComplete + a real <form>) is the
+  // secure equivalent: encrypted at rest, not readable by our own code.
+  const [token, setToken] = useState("");
   const [fleetSize, setFleetSize] = useState("");
   const [updateIntervalMs, setUpdateIntervalMs] = useState("");
   const [toast, setToast] = useState<{ open: boolean; message: string; severity: "success" | "error" }>({
@@ -28,7 +26,8 @@ export function LiveConfig({ applyConfig }: Props) {
     setToast({ open: true, message, severity });
   }
 
-  async function handleApply() {
+  async function handleApply(e: FormEvent) {
+    e.preventDefault();
     // only send fields the user actually typed something into
     const body: { fleetSize?: number; updateIntervalMs?: number } = {};
     if (fleetSize.trim() !== "") body.fleetSize = parseInt(fleetSize, 10);
@@ -56,12 +55,6 @@ export function LiveConfig({ applyConfig }: Props) {
     } else {
       showToast(`Updated — fleet size ${data.fleetSize}, updating every ${data.updateIntervalMs}ms.`, "success");
     }
-
-    try {
-      localStorage.setItem("adminToken", token);
-    } catch {
-      // ignore — browser storage unavailable, not critical
-    }
   }
 
   // frontend-only: just clears whatever's typed in the fields, e.g. after a
@@ -78,13 +71,14 @@ export function LiveConfig({ applyConfig }: Props) {
         <Typography variant="overline" color="primary.main">Live Config</Typography>
       </Stack>
       <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "background.default" }}>
-        <Stack spacing={1}>
+        <Stack component="form" spacing={1} onSubmit={handleApply}>
           <TextField
             size="small"
             type="password"
             label="Control password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
+            autoComplete="current-password"
           />
           <Stack direction="row" spacing={1}>
             <TextField
@@ -105,8 +99,9 @@ export function LiveConfig({ applyConfig }: Props) {
             />
           </Stack>
           <Stack direction="row" spacing={1}>
-            <Button variant="contained" onClick={handleApply} fullWidth>Apply</Button>
+            <Button type="submit" variant="contained" fullWidth>Apply</Button>
             <Button
+              type="button"
               variant="outlined"
               color="secondary"
               startIcon={<RestartAltIcon fontSize="small" />}

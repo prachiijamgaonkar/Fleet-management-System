@@ -8,9 +8,10 @@ interface Props {
   robots: Robot[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  hasSnapshot: boolean;
 }
 
-export function AttentionList({ robots, selectedId, onSelect }: Props) {
+export function AttentionList({ robots, selectedId, onSelect, hasSnapshot }: Props) {
   const attention = useMemo(() => robots.filter(needsAttention), [robots]);
 
   return (
@@ -21,7 +22,7 @@ export function AttentionList({ robots, selectedId, onSelect }: Props) {
       {attention.length === 0 ? (
         <Box sx={{ px: 1, py: 0.5 }}>
           <Typography variant="body2" color="text.disabled">
-            none — fleet healthy
+            {hasSnapshot ? "none — fleet healthy" : "Loading…"}
           </Typography>
         </Box>
       ) : (

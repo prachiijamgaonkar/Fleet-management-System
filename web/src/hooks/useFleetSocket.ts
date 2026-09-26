@@ -14,6 +14,10 @@ export function useFleetSocket() {
   const [robots, setRobots] = useState<Robot[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [connected, setConnected] = useState(false);
+  // distinguishes "still waiting for the first snapshot" from "snapshot
+  // arrived and the fleet is genuinely empty" — without this, both looked
+  // identical (Total: 0), which is confusing during a slow/cold-start connect
+  const [hasSnapshot, setHasSnapshot] = useState(false);
 
   useEffect(() => {
     let ws: WebSocket;
@@ -42,6 +46,7 @@ export function useFleetSocket() {
         if (msg.type === "snapshot") {
           fleetMapRef.current = new Map(msg.robots.map((r) => [r.robot_id, r]));
           setHistory(msg.history);
+          setHasSnapshot(true);
           dirtyRef.current = true;
         } else if (msg.type === "update") {
           fleetMapRef.current.set(msg.robot.robot_id, msg.robot);
@@ -88,5 +93,5 @@ export function useFleetSocket() {
     []
   );
 
-  return { robots, history, connected, applyConfig };
+  return { robots, history, connected, hasSnapshot, applyConfig };
 }
