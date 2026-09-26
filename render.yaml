@@ -1,0 +1,33 @@
+services:
+  # Backend: Express + WebSocket server, also serves the built React dashboard
+  - type: web
+    name: fleet-server
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run server
+    envVars:
+      - key: ADMIN_TOKEN
+        sync: false # set your own secret value in the Render dashboard, not here
+      - key: FLEET_SIZE
+        value: "8"
+      - key: UPDATE_INTERVAL_MS
+        value: "5000"
+
+  # Simulator: mock robot fleet, connects out to the backend above.
+  # No public URL needed — it's a background worker, not a web service.
+  - type: worker
+    name: fleet-simulator
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run simulator
+    envVars:
+      - key: WS_URL
+        sync: false # set to wss://<fleet-server's-render-url>/ws/robots after the backend deploys
+      - key: CONTROL_URL
+        sync: false # set to https://<fleet-server's-render-url> after the backend deploys
+      - key: FLEET_SIZE
+        value: "8"
+      - key: UPDATE_INTERVAL_MS
+        value: "5000"
