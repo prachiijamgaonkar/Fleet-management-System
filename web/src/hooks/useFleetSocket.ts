@@ -20,7 +20,20 @@ export function useFleetSocket() {
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      ws = new WebSocket(`ws://${location.host}/ws/dashboard`);
+      // use wss:// on an https:// page — browsers block plain ws:// from a
+      // secure page as "mixed content" and throw a SecurityError, which
+      // (uncaught) was crashing the whole app to a blank white screen
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+
+      try {
+        ws = new WebSocket(`${protocol}//${location.host}/ws/dashboard`);
+      } catch (err) {
+        // defense in depth: if the WebSocket constructor itself throws for any
+        // reason, retry instead of letting it crash the whole app again
+        console.error("failed to open dashboard WebSocket, retrying:", err);
+        reconnectTimer = setTimeout(connect, 1000);
+        return;
+      }
 
       ws.onopen = () => setConnected(true);
 
