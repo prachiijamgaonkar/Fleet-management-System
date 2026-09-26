@@ -35,15 +35,21 @@ const dashboardWSS = new WebSocketServer({ noServer: true });
 const fleet = new Map<string, Robot>(); // robot_id -> latest state
 const history: HistoryPoint[] = []; // rolling trend data for the chart
 
-let currentConfig: FleetConfig = {
+// the config this process started with — never mutated, so "reset to
+// defaults" always has something real to go back to, distinct from whatever
+// has been changed live since then
+const defaultConfig: FleetConfig = {
   fleetSize: Number(process.env.FLEET_SIZE) || 8,
   updateIntervalMs: Number(process.env.UPDATE_INTERVAL_MS) || 5000,
 };
+let currentConfig: FleetConfig = { ...defaultConfig };
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "changeme";
 
-// public, read-only — the simulator polls this to learn the desired config
+// public, read-only — the simulator polls this to learn the desired config.
+// "defaults" is extra info for the dashboard's reset button; the simulator
+// only ever reads fleetSize/updateIntervalMs and ignores the rest.
 app.get("/config", (req: Request, res: Response) => {
-  res.json(currentConfig);
+  res.json({ ...currentConfig, defaults: defaultConfig });
 });
 
 // protected — only a caller with the correct token can change live config
@@ -53,7 +59,7 @@ app.post("/config", (req: Request, res: Response) => {
   }
   const { next, rejected } = applyConfigUpdate(currentConfig, req.body as Partial<FleetConfig>);
   currentConfig = next;
-  res.json({ ...currentConfig, rejected });
+  res.json({ ...currentConfig, defaults: defaultConfig, rejected });
 });
 
 // server/WebSocketServer-level errors (e.g. EMFILE when the OS file-descriptor

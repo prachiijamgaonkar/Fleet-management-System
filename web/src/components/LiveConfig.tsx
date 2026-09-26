@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Typography, TextField, Button, Stack, Paper, Snackbar, Alert } from "@mui/material";
 import TuneIcon from "@mui/icons-material/Tune";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import { fontSizes } from "../theme";
 
 interface Props {
   applyConfig: (token: string, body: { fleetSize?: number; updateIntervalMs?: number }) => Promise<{ ok: boolean; data: any }>;
+  fetchConfig: () => Promise<{ defaults: { fleetSize: number; updateIntervalMs: number } }>;
 }
 
-export function LiveConfig({ applyConfig }: Props) {
+export function LiveConfig({ applyConfig, fetchConfig }: Props) {
   const [token, setToken] = useState(() => {
     try {
       return localStorage.getItem("adminToken") || "";
@@ -63,6 +65,22 @@ export function LiveConfig({ applyConfig }: Props) {
     }
   }
 
+  async function handleReset() {
+    if (!token.trim()) {
+      showToast("Enter the control password first.", "error");
+      return;
+    }
+    const { defaults } = await fetchConfig();
+    const { ok, data } = await applyConfig(token, defaults);
+    if (!ok) {
+      showToast(data.error === "unauthorized" ? "Wrong control password." : "Something went wrong — please try again.", "error");
+      return;
+    }
+    setFleetSize("");
+    setUpdateIntervalMs("");
+    showToast(`Reset to defaults — fleet size ${data.fleetSize}, updating every ${data.updateIntervalMs}ms.`, "success");
+  }
+
   return (
     <>
       <Stack direction="row" spacing={0.6} sx={{ alignItems: "center", mt: 2, mb: 0.5 }}>
@@ -96,7 +114,18 @@ export function LiveConfig({ applyConfig }: Props) {
               fullWidth
             />
           </Stack>
-          <Button variant="contained" onClick={handleApply}>Apply</Button>
+          <Stack direction="row" spacing={1}>
+            <Button variant="contained" onClick={handleApply} fullWidth>Apply</Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<RestartAltIcon fontSize="small" />}
+              onClick={handleReset}
+              sx={{ whiteSpace: "nowrap" }}
+            >
+              Reset
+            </Button>
+          </Stack>
         </Stack>
       </Paper>
       <Snackbar

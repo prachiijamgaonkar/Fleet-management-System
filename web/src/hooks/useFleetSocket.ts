@@ -88,5 +88,10 @@ export function useFleetSocket() {
     []
   );
 
-  return { robots, history, connected, applyConfig };
+  const fetchConfig = useCallback(async () => {
+    const res = await fetch("/config");
+    return res.json();
+  }, []);
+
+  return { robots, history, connected, applyConfig, fetchConfig };
 }

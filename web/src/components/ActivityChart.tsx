@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Chart, type ChartConfiguration } from "chart.js/auto";
 import zoomPlugin from "chartjs-plugin-zoom";
+import { Button, Stack, Typography } from "@mui/material";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import type { HistoryPoint } from "../types";
 
 Chart.register(zoomPlugin);
@@ -58,6 +60,17 @@ export function ActivityChart({ history }: Props) {
 
   return (
     <>
+      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+        <Typography variant="overline" color="text.secondary">Fleet Activity</Typography>
+        <Button
+          size="small"
+          startIcon={<RestartAltIcon fontSize="small" />}
+          onClick={() => chartRef.current?.resetZoom()}
+          sx={{ fontSize: 12 }}
+        >
+          Reset zoom
+        </Button>
+      </Stack>
       <canvas ref={canvasRef} id="trend" width={900} height={200} />
       <div id="trend-hint">scroll/pinch to zoom, drag to pan</div>
     </>

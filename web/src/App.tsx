@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Box, Paper, Stack, Typography } from "@mui/material";
+import { Box, Paper, Stack } from "@mui/material";
 import { useFleetSocket } from "./hooks/useFleetSocket";
 import { Header } from "./components/Header";
 import { SiteMap } from "./components/SiteMap";
@@ -12,7 +12,7 @@ import { ActivityChart } from "./components/ActivityChart";
 import { LiveConfig } from "./components/LiveConfig";
 
 export function App() {
-  const { robots, history, connected, applyConfig } = useFleetSocket();
+  const { robots, history, connected, applyConfig, fetchConfig } = useFleetSocket();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedRobot = useMemo(
@@ -38,9 +38,6 @@ export function App() {
             <StatusLegend />
           </Paper>
           <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-              Fleet Activity
-            </Typography>
             <ActivityChart history={history} />
           </Paper>
         </Stack>
@@ -61,7 +58,7 @@ export function App() {
             <RobotList robots={robots} selectedId={selectedId} onSelect={setSelectedId} />
           </Box>
           <RobotDetails robot={selectedRobot} />
-          <LiveConfig applyConfig={applyConfig} />
+          <LiveConfig applyConfig={applyConfig} fetchConfig={fetchConfig} />
         </Paper>
       </Stack>
     </>
