@@ -148,5 +148,27 @@ setInterval(() => {
   });
 }, 5000);
 
+// Keep-alive for the simulator: free hosting tiers (e.g. Render) put an idle
+// service to sleep after ~15 minutes with no incoming traffic. This server
+// naturally stays awake (real visitors hit the dashboard), but the simulator
+// never receives any direct incoming traffic — it only makes outbound calls —
+// so it can go idle independently, which silently drops every robot at once.
+// Pinging it here, once immediately and then periodically, means: whenever a
+// real visitor wakes *this* server up, that wake-up cascades to the simulator
+// too, instead of requiring a separate, unrelated visitor to its own URL.
+const SIMULATOR_URL = process.env.SIMULATOR_URL;
+
+function pingSimulator(): void {
+  if (!SIMULATOR_URL) return; // not configured (e.g. local dev) — nothing to do
+  fetch(SIMULATOR_URL).catch(() => {
+    // simulator may be mid-cold-start or briefly unreachable — not fatal,
+    // the next scheduled ping (or its own reconnect logic) will catch it
+  });
+}
+
 const PORT = Number(process.env.PORT) || 8080;
-server.listen(PORT, () => console.log(`server listening on ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`server listening on ${PORT}`);
+  pingSimulator(); // fire immediately on startup, don't wait for the first interval
+  setInterval(pingSimulator, 10 * 60 * 1000); // then every 10 minutes
+});
