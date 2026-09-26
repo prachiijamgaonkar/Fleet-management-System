@@ -1,0 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Canvas overlay positioning — not something MUI has a component for */
+#stage { position: relative; width: 100%; max-width: 900px; margin: 0 auto; }
+#stage img { width: 100%; height: auto; display: block; border-radius: 6px; }
+#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+/* the chart canvas has a fixed HTML width/height attribute (its drawing
+   resolution) — without this, it refuses to shrink and forces the whole
+   left column to stay 900px wide, starving the sidebar on narrower screens */
+#trend { display: block; width: 100%; height: 200px; }

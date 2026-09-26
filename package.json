@@ -1,0 +1,10 @@
+{
+  "name": "peppermint-fleet-challenge",
+  "private": true,
+  "workspaces": ["server", "simulator", "web"],
+  "scripts": {
+    "server": "npm run start -w server",
+    "simulator": "npm run start -w simulator",
+    "build": "npm run build -w web"
+  }
+}
