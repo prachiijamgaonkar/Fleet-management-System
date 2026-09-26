@@ -68,7 +68,7 @@ export function ActivityChart({ history }: Props) {
           onClick={() => chartRef.current?.resetZoom()}
           sx={{ fontSize: 12 }}
         >
-          Reset zoom
+          Reset
         </Button>
       </Stack>
       <canvas ref={canvasRef} id="trend" width={900} height={200} />

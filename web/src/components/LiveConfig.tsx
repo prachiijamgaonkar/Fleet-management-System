@@ -6,10 +6,9 @@ import { fontSizes } from "../theme";
 
 interface Props {
   applyConfig: (token: string, body: { fleetSize?: number; updateIntervalMs?: number }) => Promise<{ ok: boolean; data: any }>;
-  fetchConfig: () => Promise<{ defaults: { fleetSize: number; updateIntervalMs: number } }>;
 }
 
-export function LiveConfig({ applyConfig, fetchConfig }: Props) {
+export function LiveConfig({ applyConfig }: Props) {
   const [token, setToken] = useState(() => {
     try {
       return localStorage.getItem("adminToken") || "";
@@ -65,20 +64,11 @@ export function LiveConfig({ applyConfig, fetchConfig }: Props) {
     }
   }
 
-  async function handleReset() {
-    if (!token.trim()) {
-      showToast("Enter the control password first.", "error");
-      return;
-    }
-    const { defaults } = await fetchConfig();
-    const { ok, data } = await applyConfig(token, defaults);
-    if (!ok) {
-      showToast(data.error === "unauthorized" ? "Wrong control password." : "Something went wrong — please try again.", "error");
-      return;
-    }
+  // frontend-only: just clears whatever's typed in the fields, e.g. after a
+  // rejected/mistyped value — doesn't touch the server or the running fleet
+  function handleReset() {
     setFleetSize("");
     setUpdateIntervalMs("");
-    showToast(`Reset to defaults — fleet size ${data.fleetSize}, updating every ${data.updateIntervalMs}ms.`, "success");
   }
 
   return (
