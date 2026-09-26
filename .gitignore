@@ -4,3 +4,8 @@ dist/
 *.log
 .env
 .env.local
+
+# not read by any code at runtime — robots.json IS required (read by the
+# simulator) and must stay tracked
+events.jsonl
+Hiring-Challenge.pdf
