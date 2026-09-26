@@ -57,9 +57,10 @@ export function LiveConfig({ applyConfig }: Props) {
     }
   }
 
-  // frontend-only: just clears whatever's typed in the fields, e.g. after a
+  // frontend-only: clears everything typed in the form, e.g. after a
   // rejected/mistyped value — doesn't touch the server or the running fleet
   function handleReset() {
+    setToken("");
     setFleetSize("");
     setUpdateIntervalMs("");
   }
