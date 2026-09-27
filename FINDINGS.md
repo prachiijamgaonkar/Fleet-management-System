@@ -70,4 +70,4 @@ Independently of scale, Render **sleeps any service after ~15 minutes with no in
 2. If staying resource-constrained, shard robots across multiple simulator processes instead of one process holding thousands of sockets, avoiding both the fd-limit and memory ceilings.
 3. Virtualize the sidebar's robot list (e.g. windowing) for fleets large enough that even the throttled/memoized render starts to cost meaningfully more than a fixed number of visible rows.
 4. Add real obstacle-aware movement for the shelf rectangles.
-5. Persist history (optional stretch goal) — SQLite, given the scale and single-file simplicity fit this project better than running a separate database service.
+5. Persist history (optional stretch goal) — Postgres, since it would need to run alongside the "move off the free tier" step anyway (item 1) and scales better than a single-file database if the fleet or the retention window grows.

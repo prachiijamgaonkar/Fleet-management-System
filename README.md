@@ -1,70 +1,263 @@
 # Fleet Management Dashboard
 
-A live fleet management dashboard: a simulated robot fleet publishes position/status/battery over WebSocket, a Node/TypeScript backend ingests and broadcasts fleet state, and a React/TypeScript dashboard gives an operator a live map, trend chart, search, and a "needs attention" view — plus a live, no-redeploy control for fleet size and update interval.
+A live fleet management dashboard built as an end-to-end full-stack system.
 
-## Live URLs
+The system consists of:
 
-- **Dashboard (and the backend surface it consumes):** https://fleet-management-system-hzza.onrender.com
-  - The backend serves the dashboard directly, so this one URL is both halves of "the dashboard, and whatever backend surface it consumes" — the same origin also exposes `/ws/dashboard` (WebSocket), `/ws/robots` (WebSocket, used by the simulator), and `/config` (REST).
+* A **simulated robot fleet** that continuously publishes robot position, status, and battery information over WebSocket.
+* A **Node.js + TypeScript backend** that ingests robot updates, maintains the latest fleet state, and broadcasts updates to connected dashboard clients.
+* A **React + TypeScript dashboard** that provides a live site view, fleet trends, robot search, and a **Needs Attention** view.
+* **Live configuration controls** that allow fleet size and update interval to be changed without modifying code or redeploying the application.
 
-*(Cold start note: this is deployed on Render's free tier. If the dashboard shows a "Connecting to fleet…" spinner for up to ~30-60 seconds on first load after a period of inactivity, that's an expected free-tier cold start, not a bug — see FINDINGS.md for why.)*
+## Live Deployment
 
-## Configuration knobs
+### Dashboard
 
-Every value below is an environment variable, read at process startup — see `server/.env.example` and `simulator/.env.example` for the full list with descriptions. The important ones:
+**https://fleet-management-system-hzza.onrender.com**
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `FLEET_SIZE` | server & simulator | Starting robot count (should match on both) |
-| `UPDATE_INTERVAL_MS` | server & simulator | Starting publish interval |
-| `PAYLOAD_PADDING_BYTES` | simulator | Adds filler bytes to each message, for testing payload-size behavior |
-| `ADMIN_TOKEN` | server | Shared secret required to change live config |
-| `PORT` | server | Port the backend listens on |
-| `SIMULATOR_URL` | server | The simulator's own public URL — used for a keep-alive ping (production only) |
+The backend serves the dashboard directly, so the application uses a single public origin for both the frontend and backend.
 
-## Working the live controls (no redeploy needed)
+The same deployment exposes:
 
-Open the dashboard → sidebar → **"Live Config"**:
-1. Enter the **control password** (the value of `ADMIN_TOKEN` on the deployed backend)
-2. Enter a new **fleet size** and/or **update interval** (leave a field blank to leave it unchanged)
-3. Click **Apply** — a toast confirms success or explains exactly what was rejected (e.g. fleet size must be 1-5000)
-4. **Reset** clears the form fields locally (does not change the running fleet)
+* `/ws/dashboard` — WebSocket used by the dashboard
+* `/ws/robots` — WebSocket used by the robot simulator
+* `/config` — REST endpoint for configuration management
 
-Changes take effect within one simulator poll cycle (≤5 seconds) once the simulator is actually running — see FINDINGS.md for what "actually running" means on a free-tier host.
+### Cold Start
 
-## Local run steps (Linux)
+The application is deployed on Render's free tier.
+
+After a period of inactivity, Render may put the service to sleep. As a result, the first request can take approximately **30–60 seconds** while the service starts again.
+
+If the dashboard initially displays:
+
+> Connecting to fleet…
+
+please allow the service time to wake up. This is an expected characteristic of the free hosting tier rather than an application error.
+
+More details about deployment behavior and observed limitations are documented in `FINDINGS.md`.
+
+---
+
+# Configuration
+
+The simulator and backend support configurable fleet behavior through environment variables.
+
+The complete list of variables, including descriptions, is available in:
+
+* `server/.env.example`
+* `simulator/.env.example`
+
+The main configuration values are:
+
+| Variable                | Component          | Purpose                                                      |
+| ----------------------- | ------------------ | ------------------------------------------------------------ |
+| `FLEET_SIZE`            | Server & Simulator | Initial number of simulated robots                           |
+| `UPDATE_INTERVAL_MS`    | Server & Simulator | Initial robot update interval                                |
+| `PAYLOAD_PADDING_BYTES` | Simulator          | Adds filler bytes to each message for payload-size testing   |
+| `ADMIN_TOKEN`           | Server             | Shared secret required to modify live configuration          |
+| `PORT`                  | Server             | Port on which the backend listens                            |
+| `SIMULATOR_URL`         | Server             | Public simulator URL used for production keep-alive requests |
+
+`FLEET_SIZE` and `UPDATE_INTERVAL_MS` should be configured consistently between the server and simulator.
+
+---
+
+# Live Configuration
+
+The deployed fleet can be reconfigured without a code change or redeployment.
+
+From the dashboard:
+
+1. Open the sidebar and select **Live Config**.
+2. Enter the **control password**, which is the deployed backend's `ADMIN_TOKEN`.
+3. Enter a new **fleet size** and/or **update interval**.
+4. Leave a field blank if that value should remain unchanged.
+5. Click **Apply**.
+6. The dashboard displays a success message or explains why the requested value was rejected.
+
+For example, invalid fleet sizes are rejected with an appropriate validation message.
+
+**Control password:**
+
+* **Live deployment testingt:** use the password given in email.
+* **Local setup:** set your own value for `ADMIN_TOKEN` in `server/.env` (see `server/.env.example`).
+
+### Reset
+
+The **Reset** button only clears the configuration form locally. It does **not** reset the running fleet configuration.
+
+### Applying Changes
+
+Once the simulator is running, configuration changes are picked up during its next polling cycle, which occurs within approximately **5 seconds**.
+
+On Render's free tier, the simulator may first need to wake from inactivity. This behavior is documented in `FINDINGS.md`.
+
+**Expect a ramp-up delay for larger fleet sizes.** The change is picked up within ~5 seconds, but the fleet does not jump to the new size instantly — each robot has to open its own connection to the backend, and Render's free tier (0.1 CPU) can only accept new connections at a limited rate. In practice:
+
+* Small changes (up to ~100 robots) settle within **~30–60 seconds**.
+* Larger fleet sizes (1000–1500 robots) climb steadily but take noticeably longer to fully connect — the rate slows further as the count approaches the target, since the backend is simultaneously serving already-connected robots and accepting new ones on the same limited CPU share.
+
+This is a free-tier resource constraint, not an application bug — see `FINDINGS.md` for the numbers observed at each fleet size.
+
+**Recommended fleet size limits, by environment:**
+
+* **Live Render deployment:** keep fleet size to **~2,000 or below**. The code itself allows up to 5,000, but Render's free tier (0.1 CPU, 512MB RAM) struggles well before that — expect slow connection ramp-up past a few hundred robots, and a real risk of an out-of-memory crash in the 2,000–5,000 range, especially at faster update intervals.
+* **Running locally:** fleet sizes up to **~7,000–8,000** run cleanly, since local hardware isn't CPU/RAM-constrained the way the free tier is. The actual breaking point found in testing was around 10,240 robots (an OS file-descriptor limit, not a code limit) — see `FINDINGS.md` for the full local scaling results.
+
+---
+
+# Local Development
+
+## Prerequisites
+
+* Node.js
+* npm
+* Git
+
+## Clone the Repository
 
 ```bash
 git clone https://github.com/prachiijamgaonkar/Fleet-management-System.git
 cd Fleet-management-System
+```
+
+## Install Dependencies
+
+```bash
 npm install
-npm run build          # compiles the React dashboard into web/dist/
 ```
 
-Then, in two separate terminals, both from the project root:
+## Build the Dashboard
 
 ```bash
-npm run server          # terminal 1 — backend + serves the dashboard
+npm run build
 ```
+
+This compiles the React frontend into:
+
+```text
+web/dist/
+```
+
+## Start the Backend
+
+Open a terminal from the project root:
+
 ```bash
-npm run simulator       # terminal 2 — mock robot fleet
+npm run server
 ```
 
-Open `http://localhost:8080`. To change config knobs locally, copy `server/.env.example` → `server/.env` and `simulator/.env.example` → `simulator/.env`, edit values, restart both processes.
+The backend starts the server and serves the compiled dashboard.
 
-**Running tests:**
+## Start the Simulator
+
+Open a second terminal from the project root:
+
 ```bash
-cd server && npm test
+npm run simulator
 ```
 
-**Rebuilding after a frontend change:** the server always serves whatever is currently built into `web/dist/` — re-run `npm run build` from the project root after editing anything in `web/src/`.
+The simulator starts publishing updates for the mock robot fleet.
 
-## AI delegation notes
+## Open the Dashboard
 
-This project was built collaboratively with Claude (Anthropic) across an extended session covering the full stack: simulator, backend, frontend, deployment, and debugging. Concretely:
+Once both processes are running, open:
 
-- **Implementation** — the large majority of the actual code (simulator state machine, backend WebSocket/HTTP logic, React components, styling) was written by Claude, directed turn-by-turn with explicit decisions, corrections, and priorities set throughout — architecture choices (WebSocket over a message queue, in-memory state over a database, React over vanilla JS at the point complexity justified it, MUI adoption) were each discussed and decided deliberately, not defaulted to.
-- **Debugging and load testing** — the file-descriptor limit finding, the React-vs-vanilla performance measurements, the Render free-tier OOM crash, and the idle-sleep diagnosis were all found through live, real testing (not simulated or assumed) — Claude ran the tests and reported real numbers; interpreting them and deciding what to fix vs. document was a joint process.
-- **Documentation** — this README, FINDINGS.md, and ARCHITECTURE.md were drafted by Claude from the real findings gathered during the build, reflecting decisions actually made during development.
+```text
+http://localhost:8080
+```
 
-I can explain any part of this submission — the transport choice, the reconnect logic, the scaling limits, and the deployment tradeoffs — since every decision was walked through and verified live, not accepted blindly.
+---
+
+# Local Configuration
+
+To customize the local fleet configuration, create the environment files from the provided examples.
+
+### Server
+
+```bash
+cp server/.env.example server/.env
+```
+
+### Simulator
+
+```bash
+cp simulator/.env.example simulator/.env
+```
+
+Edit the required values in each `.env` file and restart the corresponding process.
+
+---
+
+# Running Tests
+
+Backend tests can be run with:
+
+```bash
+cd server
+npm test
+```
+
+---
+
+# Rebuilding After Frontend Changes
+
+The backend serves the contents of the compiled `web/dist/` directory.
+
+Therefore, after making changes to files under:
+
+```text
+web/src/
+```
+
+rebuild the frontend:
+
+```bash
+npm run build
+```
+
+Then restart the server if required.
+
+---
+
+# AI Delegation Notes
+
+This project was developed collaboratively with **Claude** during an extended implementation and debugging session covering the simulator, backend, frontend, deployment, testing, and documentation. **ChatGPT (OpenAI)** was also used alongside Claude, mainly to research and cross-check some concepts (e.g. WebSocket architecture options, deployment platform choices) while deciding how to approach the project, before implementation work with Claude began.
+
+I built this project with AI assistance, but every architecture and implementation decision was taken carefully — reviewed and directed throughout development.
+
+### Implementation
+
+I directed the implementation step by step with Claude, covering:
+
+* Simulator state management
+* Robot movement and status logic
+* Backend WebSocket and HTTP handling
+* React dashboard components
+* Styling and UI implementation
+
+I gave the requirements and direction for each piece, reviewed what Claude produced, and asked for corrections and changes as I tested the running system myself — this was an iterative back-and-forth, not a single one-shot generation.
+
+Key architectural decisions were mine, made deliberately rather than accepted as defaults:
+
+* WebSocket instead of a message queue
+* In-memory fleet state instead of a database
+* React instead of vanilla JavaScript once dashboard complexity increased
+* MUI for the dashboard UI
+
+### Debugging and Load Testing
+
+Performance and reliability findings were based on actual testing of the running system.
+
+This included:
+
+* File-descriptor limit investigation
+* React versus vanilla JavaScript performance measurements
+* Render free-tier memory/OOM behavior
+* Idle-sleep and cold-start behavior
+* Fleet scaling and configuration testing
+
+These tests were performed against the running application, and the resulting measurements informed the decisions documented in `FINDINGS.md`.
+
+

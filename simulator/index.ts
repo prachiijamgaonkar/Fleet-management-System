@@ -261,6 +261,7 @@ console.log(`simulator running: ${FLEET_SIZE} robots, update every ${UPDATE_INTE
 if (process.env.PORT) {
   const port = Number(process.env.PORT);
   createServer((req, res) => {
+    
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end(`simulator running: ${robots.length} robots`);
   }).listen(port, () => console.log(`health check endpoint listening on ${port}`));
