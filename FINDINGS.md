@@ -29,7 +29,9 @@ Pushed the fleet size in steps: 2,000 → 5,000 → 8,000 → 20,000, watching b
 | 8,000 | Clean |
 | 20,000 | **Failure** — both processes hit ~10,240 open file descriptors (confirmed via `sysctl kern.maxfilesperproc` = 10240 on the test machine) and started throwing connection failures; one process entered an uninterruptible I/O wait and had to be force-killed |
 
-**What limits it first, locally: the OS's per-process file-descriptor limit**, not CPU, not memory, not our own code — each simulated robot is a real TCP socket, and the OS caps how many one process can hold open. The safety cap we built into the live-config endpoint (`fleetSize ≤ 5000`) sits at roughly half that observed ceiling — a real, evidence-based margin, not an arbitrary round number.
+**What limits it first, locally: the OS's per-process file-descriptor limit**, not CPU, not memory, not our own code — each simulated robot is a real TCP socket, and the OS caps how many one process can hold open (confirmed clean up to 8,000 locally, well past this table's steps, before failing at 20,000).
+
+**The safety cap actually enforced by the live-config endpoint is `fleetSize ≤ 2000`** — deliberately set below where local hardware breaks, because the binding constraint in production isn't the local file-descriptor ceiling, it's Render's free tier: the OOM crash observed at 2,000-5,000 robots (see below) is reachable *through this exact control*, by a legitimate user, not just through an env var at startup. Capping the live control at 2,000 keeps every value it will actually accept safely under that crash zone, while local testing (via `FLEET_SIZE` at startup, not this endpoint) still demonstrates the higher, unconstrained ceiling.
 
 ### Frontend rendering cost — vanilla JS vs. React, same hardware, same test
 

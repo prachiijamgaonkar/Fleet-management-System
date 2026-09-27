@@ -12,7 +12,7 @@ describe("applyConfigUpdate — live config validation", () => {
     assert.deepEqual(rejected, []);
   });
 
-  test("rejects fleetSize above the 5000 cap, leaves it unchanged", () => {
+  test("rejects fleetSize above the 2000 cap, leaves it unchanged", () => {
     const { next, rejected } = applyConfigUpdate(base, { fleetSize: 100000 });
     assert.equal(next.fleetSize, 8); // unchanged
     assert.equal(rejected.length, 1);
@@ -50,9 +50,9 @@ describe("applyConfigUpdate — live config validation", () => {
     assert.deepEqual(rejected, []);
   });
 
-  test("boundary: fleetSize of exactly 5000 is accepted", () => {
-    const { next, rejected } = applyConfigUpdate(base, { fleetSize: 5000 });
-    assert.equal(next.fleetSize, 5000);
+  test("boundary: fleetSize of exactly 2000 is accepted", () => {
+    const { next, rejected } = applyConfigUpdate(base, { fleetSize: 2000 });
+    assert.equal(next.fleetSize, 2000);
     assert.deepEqual(rejected, []);
   });
 

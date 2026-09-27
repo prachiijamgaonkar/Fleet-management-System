@@ -53,10 +53,10 @@ export function applyConfigUpdate(
   const rejected: string[] = [];
 
   if (body.fleetSize !== undefined) {
-    if (Number.isInteger(body.fleetSize) && body.fleetSize > 0 && body.fleetSize <= 5000) {
+    if (Number.isInteger(body.fleetSize) && body.fleetSize > 0 && body.fleetSize <= 2000) {
       next.fleetSize = body.fleetSize;
     } else {
-      rejected.push(`fleetSize must be an integer between 1 and 5000 (got ${body.fleetSize})`);
+      rejected.push(`fleetSize must be an integer between 1 and 2000 (got ${body.fleetSize})`);
     }
   }
 
