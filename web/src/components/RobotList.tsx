@@ -15,7 +15,14 @@ export function RobotList({ robots, selectedId, onSelect }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? robots.filter((r) => r.robot_id.toLowerCase().includes(q)) : robots;
+    const matched = q ? robots.filter((r) => r.robot_id.toLowerCase().includes(q)) : robots;
+    // robot_id is "r" + a number, so a plain string sort would put r10 before
+    // r2 — compare the numeric part instead so the list reads in a stable,
+    // predictable order regardless of the (network-timing-dependent) order
+    // updates actually arrived in.
+    return [...matched].sort(
+      (a, b) => parseInt(a.robot_id.slice(1), 10) - parseInt(b.robot_id.slice(1), 10)
+    );
   }, [robots, query]);
 
   return (
