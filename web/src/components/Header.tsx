@@ -14,7 +14,7 @@ export function Header({ connected }: Props) {
         <Stack direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
           <PrecisionManufacturingIcon color="primary" fontSize="small" />
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-             Fleet Control System
+             Fleet Management Dashboard
           </Typography>
         </Stack>
         <Chip

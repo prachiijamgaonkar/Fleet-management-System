@@ -1,4 +1,4 @@
-# Peppermint Fleet Control
+# Fleet Management Dashboard
 
 A live fleet management dashboard: a simulated robot fleet publishes position/status/battery over WebSocket, a Node/TypeScript backend ingests and broadcasts fleet state, and a React/TypeScript dashboard gives an operator a live map, trend chart, search, and a "needs attention" view — plus a live, no-redeploy control for fleet size and update interval.
 

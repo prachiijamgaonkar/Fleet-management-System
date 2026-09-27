@@ -53,6 +53,9 @@ export function useFleetSocket() {
           dirtyRef.current = true;
         } else if (msg.type === "history_point") {
           setHistory((h) => [...h, msg.point]);
+        } else if (msg.type === "removed") {
+          fleetMapRef.current.delete(msg.robot_id);
+          dirtyRef.current = true;
         }
       };
 

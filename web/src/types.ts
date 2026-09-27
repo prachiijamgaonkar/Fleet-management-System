@@ -27,4 +27,5 @@ export interface HistoryPoint {
 export type ServerMessage =
   | { type: "snapshot"; robots: Robot[]; history: HistoryPoint[] }
   | { type: "update"; robot: Robot }
-  | { type: "history_point"; point: HistoryPoint };
+  | { type: "history_point"; point: HistoryPoint }
+  | { type: "removed"; robot_id: string };

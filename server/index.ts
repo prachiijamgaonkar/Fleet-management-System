@@ -87,11 +87,43 @@ function broadcastToDashboards(update: Robot): void {
   });
 }
 
+function broadcastRemoved(robotId: string): void {
+  const msg = JSON.stringify({ type: "removed", robot_id: robotId });
+  dashboardWSS.clients.forEach((client) => {
+    if (client.readyState === client.OPEN) client.send(msg);
+  });
+}
+
+// A robot that's still offline this long after losing its connection is treated
+// as gone for good (e.g. a scale-down) rather than a robot mid-reconnect — the
+// simulator's own backoff caps at 15s, so 30s gives a real reconnect plenty of
+// room before we give up on it and stop counting it in Total/the sidebar.
+const OFFLINE_REMOVE_MS = 30000;
+const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function cancelOfflineRemoval(robotId: string): void {
+  const timer = offlineTimers.get(robotId);
+  if (timer) {
+    clearTimeout(timer);
+    offlineTimers.delete(robotId);
+  }
+}
+
 function handleRobotOffline(robotId: string): void {
   const updated = markRobotOffline(fleet, robotId);
   if (!updated) return; // unknown robot, or already offline — nothing to broadcast
   broadcastToDashboards(updated);
   console.log(`${robotId} marked offline (connection lost)`);
+
+  cancelOfflineRemoval(robotId); // replace any earlier pending timer
+  const timer = setTimeout(() => {
+    offlineTimers.delete(robotId);
+    if (fleet.get(robotId)?.status !== "offline") return; // reconnected since
+    fleet.delete(robotId);
+    broadcastRemoved(robotId);
+    console.log(`${robotId} removed (offline for ${OFFLINE_REMOVE_MS / 1000}s)`);
+  }, OFFLINE_REMOVE_MS);
+  offlineTimers.set(robotId, timer);
 }
 
 robotWSS.on("connection", (ws: RobotSocket) => {
@@ -102,6 +134,7 @@ robotWSS.on("connection", (ws: RobotSocket) => {
   ws.on("message", (raw) => {
     const update: Robot = JSON.parse(raw.toString());
     ws.robotId = update.robot_id; // remember which robot this socket belongs to
+    cancelOfflineRemoval(update.robot_id); // it's back — don't remove it later
     fleet.set(update.robot_id, update);
     broadcastToDashboards(update);
   });
