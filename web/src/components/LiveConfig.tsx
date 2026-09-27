@@ -44,7 +44,7 @@ export function LiveConfig({ applyConfig }: Props) {
     if (rejected.length > 0) {
       const friendly = rejected.map((r: string) =>
         r.startsWith("fleetSize")
-          ? "Fleet size must be a whole number between 1 and 2000."
+          ? "Fleet size must be a whole number between 1 and 1500."
           : r.startsWith("updateIntervalMs")
           ? "Update interval must be a whole number of at least 200ms."
           : r

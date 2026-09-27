@@ -98,14 +98,14 @@ On Render's free tier, the simulator may first need to wake from inactivity. Thi
 * Small changes (up to ~100 robots) settle within **~30–60 seconds**.
 * Larger fleet sizes (1000–1500 robots) climb steadily but take noticeably longer to fully connect — the rate slows further as the count approaches the target, since the backend is simultaneously serving already-connected robots and accepting new ones on the same limited CPU share.
 
-This is a free-tier resource constraint, not an application bug — see `FINDINGS.md` for the numbers observed at each fleet size.
+**Taking time to reach the target is expected behavior, not an error.** The Total count climbing gradually toward the requested fleet size — rather than jumping there instantly — means the change is actively being applied, not stuck or failing. The count may also briefly pause at a given number before continuing to climb; this is still normal, and it will keep progressing toward the target. This is a free-tier resource constraint, not an application bug — see `FINDINGS.md` for the numbers observed at each fleet size.
 
 **Fleet size limits, by environment:**
 
-* **Live Render deployment (this control):** the Live Config endpoint enforces a **maximum of 2,000** — a deliberate safety cap, set below the 2,000–5,000 range where Render's free tier (0.1 CPU, 512MB RAM) was observed to run out of memory and crash. Even at 2,000, expect noticeably slower connection ramp-up past a few hundred robots, since the free tier's CPU limits how fast it can accept new connections — see `FINDINGS.md` for the numbers observed.
+* **Live Render deployment (this control):** the Live Config endpoint enforces a **maximum of 1,500** — a deliberate safety cap, set below the 2,000–5,000 range where Render's free tier (0.1 CPU, 512MB RAM) was observed to run out of memory and crash. Even at 1,500, expect noticeably slower connection ramp-up past a few hundred robots, since the free tier's CPU limits how fast it can accept new connections — see `FINDINGS.md` for the numbers observed.
 * **Running locally:** fleet sizes up to **~7,000–8,000** run cleanly via the `FLEET_SIZE` startup variable, since local hardware isn't CPU/RAM-constrained the way the free tier is. The actual breaking point found in testing was around 10,240 robots (an OS file-descriptor limit, not a code limit) — see `FINDINGS.md` for the full local scaling results.
 
-**Note:** the 2,000 cap applies to the Live Config *button* everywhere (local or Render), since it's the same validation code either way — applying a value above 2,000 through the UI will be rejected on both. To test fleet sizes above 2,000 locally, set `FLEET_SIZE` directly in `server/.env` and `simulator/.env` (matching values in both) and restart both processes — this bypasses the live-control cap by design, since it's a startup value, not a live change.
+**Note:** the 1,500 cap applies to the Live Config *button* everywhere (local or Render), since it's the same validation code either way — applying a value above 1,500 through the UI will be rejected on both. To test fleet sizes above 1,500 locally, set `FLEET_SIZE` directly in `server/.env` and `simulator/.env` (matching values in both) and restart both processes — this bypasses the live-control cap by design, since it's a startup value, not a live change.
 
 ---
 
