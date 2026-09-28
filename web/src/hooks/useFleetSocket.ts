@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HistoryPoint, Robot, ServerMessage } from "../types";
 
-// Only push fleet state into React at most this often, regardless of how many
-// WebSocket messages arrive in between. Without this, a burst of hundreds of
-// robot updates arriving at once (e.g. all robots ticking on the same simulator
-// timer) each trigger a full React re-render — this throttle is what keeps the
-// UI responsive under that load, independent of how cheap any single render is.
+
 const FLUSH_INTERVAL_MS = 150;
 
 export function useFleetSocket() {
@@ -14,9 +10,7 @@ export function useFleetSocket() {
   const [robots, setRobots] = useState<Robot[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [connected, setConnected] = useState(false);
-  // distinguishes "still waiting for the first snapshot" from "snapshot
-  // arrived and the fleet is genuinely empty" — without this, both looked
-  // identical (Total: 0), which is confusing during a slow/cold-start connect
+
   const [hasSnapshot, setHasSnapshot] = useState(false);
 
   useEffect(() => {
@@ -85,13 +79,19 @@ export function useFleetSocket() {
 
   const applyConfig = useCallback(
     async (token: string, body: { fleetSize?: number; updateIntervalMs?: number }) => {
-      const res = await fetch("/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-token": token },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      return { ok: res.ok, data };
+      try {
+        const res = await fetch("/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-token": token },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        return { ok: res.ok, data };
+      } catch {
+        // server unreachable (down, cold-starting, offline) or returned a
+        // non-JSON response — either way there's nothing to parse
+        return { ok: false, data: { error: "network" } };
+      }
     },
     []
   );

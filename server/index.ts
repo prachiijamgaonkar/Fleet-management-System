@@ -23,6 +23,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(express.json());
+// express.json() throws on malformed JSON bodies; without this, Express's
+// default handler sends back an HTML error page, which breaks any caller
+// (like the dashboard) expecting a JSON response
+app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError) {
+    return res.status(400).json({ error: "invalid_json" });
+  }
+  next(err);
+});
 app.use(express.static(path.join(__dirname, "../web/dist")));
 
 const server = createServer(app);
@@ -56,10 +65,7 @@ app.post("/config", (req: Request, res: Response) => {
   res.json({ ...currentConfig, rejected });
 });
 
-// server/WebSocketServer-level errors (e.g. EMFILE when the OS file-descriptor
-// limit is hit while accepting a new connection) happen before any individual
-// connection exists, so they need their own handlers — without one, this can
-// crash the whole process instead of just failing that one connection attempt
+
 server.on("error", (err: NodeJS.ErrnoException) => {
   console.error(`http server error: ${err.code || err.message}`);
 });
@@ -94,10 +100,7 @@ function broadcastRemoved(robotId: string): void {
   });
 }
 
-// A robot that's still offline this long after losing its connection is treated
-// as gone for good (e.g. a scale-down) rather than a robot mid-reconnect — the
-// simulator's own backoff caps at 15s, so 30s gives a real reconnect plenty of
-// room before we give up on it and stop counting it in Total/the sidebar.
+
 const OFFLINE_REMOVE_MS = 30000;
 const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -111,11 +114,11 @@ function cancelOfflineRemoval(robotId: string): void {
 
 function handleRobotOffline(robotId: string): void {
   const updated = markRobotOffline(fleet, robotId);
-  if (!updated) return; // unknown robot, or already offline — nothing to broadcast
+  if (!updated) return; 
   broadcastToDashboards(updated);
   console.log(`${robotId} marked offline (connection lost)`);
 
-  cancelOfflineRemoval(robotId); // replace any earlier pending timer
+  cancelOfflineRemoval(robotId); 
   const timer = setTimeout(() => {
     offlineTimers.delete(robotId);
     if (fleet.get(robotId)?.status !== "offline") return; // reconnected since
@@ -144,9 +147,7 @@ robotWSS.on("connection", (ws: RobotSocket) => {
     if (ws.robotId) handleRobotOffline(ws.robotId);
   });
 
-  // without this, a per-socket error (e.g. an abrupt network reset) is an
-  // unhandled "error" event, which close() fires right after anyway — but
-  // logging it here is what actually shows you *why*, instead of just "closed"
+ 
   ws.on("error", (err: NodeJS.ErrnoException) => {
     console.error(`robot socket error (${ws.robotId ?? "unidentified"}): ${err.code || err.message}`);
   });
@@ -166,7 +167,7 @@ dashboardWSS.on("connection", (ws: WebSocket) => {
 setInterval(() => {
   robotWSS.clients.forEach((client) => {
     const ws = client as RobotSocket;
-    if (!ws.isAlive) return ws.terminate(); // triggers "close" above -> markOffline
+    if (!ws.isAlive) return ws.terminate(); 
     ws.isAlive = false;
     ws.ping();
   });
@@ -194,14 +195,13 @@ const SIMULATOR_URL = process.env.SIMULATOR_URL;
 function pingSimulator(): void {
   if (!SIMULATOR_URL) return; // not configured (e.g. local dev) — nothing to do
   fetch(SIMULATOR_URL).catch(() => {
-    // simulator may be mid-cold-start or briefly unreachable — not fatal,
-    // the next scheduled ping (or its own reconnect logic) will catch it
+
   });
 }
 
 const PORT = Number(process.env.PORT) || 8080;
 server.listen(PORT, () => {
   console.log(`server listening on ${PORT}`);
-  pingSimulator(); // fire immediately on startup, don't wait for the first interval
+  pingSimulator(); 
   setInterval(pingSimulator, 10 * 60 * 1000); // then every 10 minutes
 });

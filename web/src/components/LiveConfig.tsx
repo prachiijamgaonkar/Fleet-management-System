@@ -33,7 +33,13 @@ export function LiveConfig({ applyConfig }: Props) {
     const { ok, data } = await applyConfig(token, body);
 
     if (!ok) {
-      showToast(data.error === "unauthorized" ? "Wrong control password." : "Something went wrong — please try again.", "error");
+      const message =
+        data.error === "unauthorized"
+          ? "Wrong control password."
+          : data.error === "network"
+          ? "Couldn't reach the server — it may be waking up. Try again in a moment."
+          : "Something went wrong — please try again.";
+      showToast(message, "error");
       return;
     }
 
