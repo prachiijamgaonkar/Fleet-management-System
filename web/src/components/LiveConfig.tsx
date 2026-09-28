@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Typography, TextField, Button, Stack, Paper, Snackbar, Alert } from "@mui/material";
 import TuneIcon from "@mui/icons-material/Tune";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
@@ -9,10 +9,7 @@ interface Props {
 }
 
 export function LiveConfig({ applyConfig }: Props) {
-  // No localStorage here on purpose — that would store the password in plain
-  // text, readable by any JS on the page. Letting the browser's own password
-  // manager offer to remember it (via autoComplete + a real <form>) is the
-  // secure equivalent: encrypted at rest, not readable by our own code.
+
   const [token, setToken] = useState("");
   const [fleetSize, setFleetSize] = useState("");
   const [updateIntervalMs, setUpdateIntervalMs] = useState("");
@@ -26,7 +23,7 @@ export function LiveConfig({ applyConfig }: Props) {
     setToast({ open: true, message, severity });
   }
 
-  async function handleApply(e: FormEvent) {
+  async function handleApply(e: SubmitEvent) {
     e.preventDefault();
     // only send fields the user actually typed something into
     const body: { fleetSize?: number; updateIntervalMs?: number } = {};
@@ -57,8 +54,6 @@ export function LiveConfig({ applyConfig }: Props) {
     }
   }
 
-  // frontend-only: clears everything typed in the form, e.g. after a
-  // rejected/mistyped value — doesn't touch the server or the running fleet
   function handleReset() {
     setToken("");
     setFleetSize("");
