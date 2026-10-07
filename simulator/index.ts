@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer } from "http";
+import { createServer, type IncomingMessage, type ServerResponse } from "http";
 
 type RobotStatus =
   | "idle"
@@ -44,7 +44,6 @@ const WS_URL = process.env.WS_URL || "ws://localhost:8080/ws/robots";
 const FLEET_SIZE = parseInt(process.env.FLEET_SIZE || "8", 10);
 const UPDATE_INTERVAL_MS = parseInt(process.env.UPDATE_INTERVAL_MS || "5000", 10);
 const PAYLOAD_PADDING_BYTES = parseInt(process.env.PAYLOAD_PADDING_BYTES || "0", 10);
-const CONTROL_URL = process.env.CONTROL_URL || "http://localhost:8080";
 
 const SITE_WIDTH = 900;
 const SITE_HEIGHT = 560;
@@ -71,6 +70,7 @@ function buildRobotList(n: number): RobotSeed[] {
   }
   return list;
 }
+
 
 const DRAIN_RATES: Record<string, number> = {
   active: 0.4,
@@ -115,16 +115,13 @@ class SimRobot {
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000); // exponential backoff, capped
     });
     this.ws.on("error", (err: NodeJS.ErrnoException) => {
-      // "close" fires right after and logs the reconnect — this just adds *why*
-      // it failed (e.g. EMFILE from hitting the OS file-descriptor limit),
-      // which used to be silently swallowed and made real failures hard to diagnose
       console.error(`${this.robot_id} connection error: ${err.code || err.message}`);
     });
   }
 
   decommission(): void {
     this.removed = true;
-    this.ws.close();
+    this.ws.close(4000, "decommissioned");
   }
 
   pickTarget(): void {
@@ -132,7 +129,6 @@ class SimRobot {
   }
 
   tick(): void {
-    // occasionally simulate a dropped connection to exercise reconnect + backend offline-detection
     if (this.ws.readyState === WebSocket.OPEN && Math.random() < 0.0005) {
       this.ws.terminate();
       return;
@@ -217,52 +213,59 @@ function startTicking(intervalMs: number): void {
 }
 startTicking(currentIntervalMs);
 
-async function pollConfig(): Promise<void> {
-  try {
-    const res = await fetch(`${CONTROL_URL}/config`);
-    const cfg: FleetConfig = await res.json();
-
-    if (cfg.fleetSize > robots.length) {
-      const toAdd = cfg.fleetSize - robots.length;
-      for (let i = 0; i < toAdd; i++) {
-        robots.push(new SimRobot({
-          robot_id: `r${nextId++}`,
-          robot_type: Math.random() < 0.5 ? "picker" : "hauler",
-          ...randomPoint(),
-        }));
-      }
-      console.log(`scaled up to ${robots.length} robots`);
-    } else if (cfg.fleetSize < robots.length) {
-      const toRemove = robots.splice(cfg.fleetSize);
-      toRemove.forEach((r) => r.decommission());
-      console.log(`scaled down to ${robots.length} robots`);
+function applyFleetConfig(cfg: FleetConfig): void {
+  if (cfg.fleetSize > robots.length) {
+    const toAdd = cfg.fleetSize - robots.length;
+    for (let i = 0; i < toAdd; i++) {
+      robots.push(new SimRobot({
+        robot_id: `r${nextId++}`,
+        robot_type: Math.random() < 0.5 ? "picker" : "hauler",
+        ...randomPoint(),
+      }));
     }
+    console.log(`scaled up to ${robots.length} robots`);
+  } else if (cfg.fleetSize < robots.length) {
+    const toRemove = robots.splice(cfg.fleetSize);
+    toRemove.forEach((r) => r.decommission());
+    console.log(`scaled down to ${robots.length} robots`);
+  }
 
-    if (cfg.updateIntervalMs && cfg.updateIntervalMs !== currentIntervalMs) {
-      currentIntervalMs = cfg.updateIntervalMs;
-      startTicking(currentIntervalMs);
-      console.log(`update interval now ${currentIntervalMs}ms`);
-    }
-  } catch (err) {
-    // server unreachable this poll — just try again next time
+  if (cfg.updateIntervalMs && cfg.updateIntervalMs !== currentIntervalMs) {
+    currentIntervalMs = cfg.updateIntervalMs;
+    startTicking(currentIntervalMs);
+    console.log(`update interval now ${currentIntervalMs}ms`);
   }
 }
 
-setInterval(pollConfig, 5000);
-
 console.log(`simulator running: ${FLEET_SIZE} robots, update every ${UPDATE_INTERVAL_MS}ms -> ${WS_URL}`);
 
-// The simulator itself has no HTTP surface — it's purely an outbound
-// WebSocket client. But hosting platforms with a free tier for "web
-// services" (vs. a paid-only background worker tier) require something
-// listening on $PORT to pass health checks. Only binds when PORT is set
-// (e.g. by the host), so local dev — which never sets PORT here — is
-// unaffected and behaves exactly as before.
-if (process.env.PORT) {
-  const port = Number(process.env.PORT);
-  createServer((req, res) => {
-    
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end(`simulator running: ${robots.length} robots`);
-  }).listen(port, () => console.log(`health check endpoint listening on ${port}`));
+const HTTP_PORT = Number(process.env.PORT) || 8081;
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => { data += chunk; });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
 }
+
+createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  if (req.method === "POST" && req.url === "/config-changed") {
+    try {
+      const body = await readBody(req);
+      const cfg: FleetConfig = JSON.parse(body);
+      applyFleetConfig(cfg);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      console.error(`malformed /config-changed request, ignoring: ${(err as Error).message}`);
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "invalid_body" }));
+    }
+    return;
+  }
+
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end(`simulator running: ${robots.length} robots`);
+}).listen(HTTP_PORT, () => console.log(`http endpoint listening on ${HTTP_PORT}`));

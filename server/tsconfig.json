@@ -6,9 +6,14 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true,
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true
+ 
+    "rewriteRelativeImportExtensions": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
-  "include": ["*.ts"]
+  "include": ["src/**/*.ts"]
 }

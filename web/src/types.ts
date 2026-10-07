@@ -24,6 +24,17 @@ export interface HistoryPoint {
   total: number;
 }
 
+export interface RobotHistoryEntry {
+  id: number;
+  robot_id: string;
+  robot_type: string | null;
+  x: number;
+  y: number;
+  status: RobotStatus;
+  battery: number;
+  recorded_at: string;
+}
+
 export type ServerMessage =
   | { type: "snapshot"; robots: Robot[]; history: HistoryPoint[] }
   | { type: "update"; robot: Robot }

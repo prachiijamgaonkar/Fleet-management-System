@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { applyConfigUpdate, markRobotOffline, computeStats, type Robot, type FleetConfig } from "./fleetLogic.ts";
+import { applyConfigUpdate, markRobotOffline, computeStats } from "../src/services/fleet.service.ts";
+import type { Robot, FleetConfig } from "../src/models/types.ts";
 
 describe("applyConfigUpdate — live config validation", () => {
   const base: FleetConfig = { fleetSize: 8, updateIntervalMs: 5000 };
@@ -97,9 +98,6 @@ describe("markRobotOffline — flaky-connection handling", () => {
   });
 
   test("a second close event on the same dead connection is a no-op the second time", () => {
-    // simulates the real bug class this function exists to prevent: the ws
-    // heartbeat's terminate() and the socket's own "close" event can both fire
-    // for the same disconnect — this must not double-broadcast an offline update
     const fleet = new Map<string, Robot>([["r1", makeRobot()]]);
     const first = markRobotOffline(fleet, "r1");
     const second = markRobotOffline(fleet, "r1");

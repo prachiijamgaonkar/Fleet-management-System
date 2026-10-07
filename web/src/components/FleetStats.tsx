@@ -10,7 +10,7 @@ interface Props {
 
 function StatTile({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
-    <Card variant="outlined" sx={{ px: 2.5, py: 1.2, minWidth: 100 }}>
+    <Card variant="outlined" sx={{ px: 2.5, py: 1.2, flex: 1, minWidth: 0 }}>
       <Typography variant="overline" color="text.secondary" sx={{ lineHeight: 1.4 }}>
         {label}
       </Typography>
@@ -32,9 +32,9 @@ export function FleetStats({ robots }: Props) {
 
   return (
     <Stack
-      direction="row"
+      direction={{ xs: "column", sm: "row" }}
       spacing={1.5}
-      sx={{ justifyContent: "center", flexWrap: "wrap", py: 2.5 }}
+      sx={{ maxWidth: 1240, mx: "auto", px: 2.5, py: 2.5 }}
     >
       <StatTile label="Total" value={stats.total} />
       <StatTile label="Active" value={stats.active} color="success.main" />

@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
-import { TextField, List, Typography, InputAdornment } from "@mui/material";
+import { TextField, List, Paper, Stack, Divider, Typography, InputAdornment } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import type { Robot } from "../types";
 import { RobotRow } from "./RobotRow";
+import { RobotDetails } from "./RobotDetails";
+import { RobotHistoryChart } from "./RobotHistoryChart";
+import { monoFont, fontSizes } from "../theme";
 
 interface Props {
   robots: Robot[];
@@ -48,7 +51,22 @@ export function RobotList({ robots, selectedId, onSelect }: Props) {
       </Typography>
       <List dense disablePadding>
         {filtered.map((r) => (
-          <RobotRow key={r.robot_id} robot={r} selected={r.robot_id === selectedId} onSelect={onSelect} />
+          <li key={r.robot_id} style={{ listStyle: "none" }}>
+            <RobotRow robot={r} selected={r.robot_id === selectedId} onSelect={onSelect} />
+            {r.robot_id === selectedId && (
+              <Paper variant="outlined" sx={{ p: 1.5, mb: 1, bgcolor: "background.default" }}>
+                <Stack spacing={1}>
+                  <Typography sx={{ fontFamily: monoFont, fontWeight: 700, fontSize: fontSizes.dataLg }}>
+                    {r.robot_id} <Typography component="span" variant="caption" color="text.secondary">{r.robot_type}</Typography>
+                  </Typography>
+                  <RobotDetails robot={r} />
+                  <Divider />
+                  <Typography variant="caption" color="text.secondary">Battery history</Typography>
+                  <RobotHistoryChart robotId={r.robot_id} />
+                </Stack>
+              </Paper>
+            )}
+          </li>
         ))}
       </List>
     </>

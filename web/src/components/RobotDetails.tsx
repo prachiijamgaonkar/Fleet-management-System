@@ -1,59 +1,46 @@
 import type { ReactNode } from "react";
-import { Box, Paper, Stack, Typography, Chip, Divider } from "@mui/material";
+import { Stack, Typography, Chip } from "@mui/material";
 import type { Robot } from "../types";
 import { STATUS_COLORS } from "../utils";
 import { monoFont, fontSizes } from "../theme";
+import { StatusIcon } from "./StatusIcon";
 
 interface Props {
-  robot: Robot | null;
+  robot: Robot;
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", py: 0.7 }}>
+    <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
       <Typography variant="caption" color="text.secondary">{label}</Typography>
       {children}
     </Stack>
   );
 }
 
+// Content only, no outer card/border — the parent renders one shared card
+// around this plus the battery history chart, so they read as a single unit.
 export function RobotDetails({ robot }: Props) {
   return (
-    <>
-      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mt: 2, mb: 0.5 }}>
-        Selected
-      </Typography>
-      <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "background.default" }}>
-        {robot ? (
-          <Box>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 0.5 }}>
-              <Typography sx={{ fontFamily: monoFont, fontWeight: 700, fontSize: fontSizes.dataLg }}>{robot.robot_id}</Typography>
-              <Typography variant="caption" color="text.secondary">{robot.robot_type}</Typography>
-            </Stack>
-            <Divider sx={{ my: 0.5 }} />
-            <Row label="Status">
-              <Chip
-                label={robot.status}
-                size="small"
-                sx={{
-                  bgcolor: `${STATUS_COLORS[robot.status]}26`,
-                  color: STATUS_COLORS[robot.status],
-                  fontWeight: 600,
-                  fontSize: fontSizes.badge,
-                  height: 20,
-                  textTransform: "uppercase",
-                }}
-              />
-            </Row>
-            <Divider />
-            <Row label="Battery"><Typography sx={{ fontFamily: monoFont, fontSize: fontSizes.dataMd }}>{robot.battery.toFixed(1)}%</Typography></Row>
-            <Divider />
-            <Row label="Position"><Typography sx={{ fontFamily: monoFont, fontSize: fontSizes.dataMd }}>({robot.x.toFixed(0)}, {robot.y.toFixed(0)})</Typography></Row>
-          </Box>
-        ) : (
-          <Typography variant="body2" color="text.disabled">Click a robot to see details</Typography>
-        )}
-      </Paper>
-    </>
+    <Stack spacing={0.7}>
+      <Row label="Status">
+        <Chip
+          icon={<StatusIcon status={robot.status} color={STATUS_COLORS[robot.status]} size={12} />}
+          label={robot.status}
+          size="small"
+          sx={{
+            bgcolor: `${STATUS_COLORS[robot.status]}26`,
+            color: STATUS_COLORS[robot.status],
+            fontWeight: 600,
+            fontSize: fontSizes.badge,
+            height: 20,
+            textTransform: "uppercase",
+            "& .MuiChip-icon": { ml: "6px" },
+          }}
+        />
+      </Row>
+      <Row label="Battery"><Typography sx={{ fontFamily: monoFont, fontSize: fontSizes.dataMd }}>{robot.battery.toFixed(1)}%</Typography></Row>
+      <Row label="Position"><Typography sx={{ fontFamily: monoFont, fontSize: fontSizes.dataMd }}>({robot.x.toFixed(0)}, {robot.y.toFixed(0)})</Typography></Row>
+    </Stack>
   );
 }

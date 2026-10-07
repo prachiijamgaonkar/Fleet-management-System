@@ -3,6 +3,7 @@ import { ListItemButton, Stack, Typography, Chip } from "@mui/material";
 import type { Robot } from "../types";
 import { needsAttention, STATUS_COLORS } from "../utils";
 import { monoFont, fontSizes } from "../theme";
+import { StatusIcon } from "./StatusIcon";
 
 interface Props {
   robot: Robot;
@@ -40,6 +41,7 @@ export const RobotRow = memo(function RobotRow({ robot, selected, onSelect }: Pr
         </Stack>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0 }}>
           <Chip
+            icon={<StatusIcon status={robot.status} color={color} size={12} />}
             label={robot.status}
             size="small"
             sx={{
@@ -49,6 +51,7 @@ export const RobotRow = memo(function RobotRow({ robot, selected, onSelect }: Pr
               fontSize: fontSizes.badge,
               height: 20,
               textTransform: "uppercase",
+              "& .MuiChip-icon": { ml: "6px" },
             }}
           />
           <Typography color="text.secondary" sx={{ fontFamily: monoFont, fontSize: fontSizes.dataSm, width: 32, textAlign: "right" }}>
