@@ -48,6 +48,20 @@ const PAYLOAD_PADDING_BYTES = parseInt(process.env.PAYLOAD_PADDING_BYTES || "0",
 const SITE_WIDTH = 900;
 const SITE_HEIGHT = 560;
 
+// Reconnect/connect-ramp pacing, per AWS's "Full Jitter" backoff algorithm
+// (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/):
+// sleep = random(0, min(cap, base * 2^attempt)). A fully random delay within the
+// current exponential window, not a deterministic doubling, is what actually
+// breaks clients out of retrying in synchronized waves.
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_CAP_MS = 15000;
+
+// New-connection ramp pacing: spread a batch of new robots' *first* connection
+// attempts randomly across a window instead of firing them all in the same tick,
+// so scaling up doesn't create its own thundering herd against the server.
+const RAMP_MS_PER_ROBOT = 15;
+const RAMP_MAX_WINDOW_MS = 20000;
+
 const roster: RosterEntry[] = JSON.parse(fs.readFileSync(path.join(__dirname, "../robots.json"), "utf-8"));
 
 function randomPoint(): Point {
@@ -90,29 +104,34 @@ class SimRobot {
   battery: number = 60 + Math.random() * 40;
   target: Point | null = null;
   statusHoldTicks = 0;
-  reconnectDelay = 1000;
+  connectAttempt = 0;
   removed = false; // true once deliberately scaled down — stops reconnect attempts
-  ws!: WebSocket;
+  ws?: WebSocket;
 
   constructor({ robot_id, robot_type, x, y }: RobotSeed) {
     this.robot_id = robot_id;
     this.robot_type = robot_type;
     this.x = x;
     this.y = y;
-    this.connect();
+    // connect() is NOT called here — it's scheduled externally via
+    // scheduleConnections() so a burst of new robots doesn't all open a
+    // socket in the same tick of the event loop.
   }
 
   connect(): void {
+    if (this.removed) return; // scaled down before its staggered turn came up
     this.ws = new WebSocket(WS_URL);
     this.ws.on("open", () => {
-      this.reconnectDelay = 1000; // reset backoff on a healthy connection
+      this.connectAttempt = 0; // reset backoff on a healthy connection
       console.log(`${this.robot_id} connected`);
     });
     this.ws.on("close", () => {
       if (this.removed) return; // scaled down deliberately, don't reconnect
-      console.log(`${this.robot_id} disconnected, retrying in ${this.reconnectDelay}ms`);
-      setTimeout(() => this.connect(), this.reconnectDelay);
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000); // exponential backoff, capped
+      this.connectAttempt++;
+      // Full Jitter: random(0, min(cap, base * 2^attempt)) — see constant comment above.
+      const delay = Math.random() * Math.min(RECONNECT_CAP_MS, RECONNECT_BASE_MS * 2 ** this.connectAttempt);
+      console.log(`${this.robot_id} disconnected, retrying in ${Math.round(delay)}ms`);
+      setTimeout(() => this.connect(), delay);
     });
     this.ws.on("error", (err: NodeJS.ErrnoException) => {
       console.error(`${this.robot_id} connection error: ${err.code || err.message}`);
@@ -121,7 +140,7 @@ class SimRobot {
 
   decommission(): void {
     this.removed = true;
-    this.ws.close(4000, "decommissioned");
+    this.ws?.close(4000, "decommissioned");
   }
 
   pickTarget(): void {
@@ -129,6 +148,8 @@ class SimRobot {
   }
 
   tick(): void {
+    if (!this.ws) return; // still waiting for its staggered first connection attempt
+
     if (this.ws.readyState === WebSocket.OPEN && Math.random() < 0.0005) {
       this.ws.terminate();
       return;
@@ -198,11 +219,20 @@ class SimRobot {
       battery: Number(this.battery.toFixed(1)),
     };
     if (PAYLOAD_PADDING_BYTES > 0) payload.padding = "x".repeat(PAYLOAD_PADDING_BYTES);
-    this.ws.send(JSON.stringify(payload));
+    this.ws!.send(JSON.stringify(payload)); // only called from tick() after confirming ws is OPEN
+  }
+}
+
+function scheduleConnections(newRobots: SimRobot[]): void {
+  const window = Math.min(newRobots.length * RAMP_MS_PER_ROBOT, RAMP_MAX_WINDOW_MS);
+  for (const robot of newRobots) {
+    const delay = window > 0 ? Math.random() * window : 0;
+    setTimeout(() => robot.connect(), delay);
   }
 }
 
 let robots: SimRobot[] = buildRobotList(FLEET_SIZE).map((r) => new SimRobot(r));
+scheduleConnections(robots);
 let nextId = robots.length + 1;
 let currentIntervalMs = UPDATE_INTERVAL_MS;
 let tickHandle: ReturnType<typeof setInterval> | null = null;
@@ -216,14 +246,17 @@ startTicking(currentIntervalMs);
 function applyFleetConfig(cfg: FleetConfig): void {
   if (cfg.fleetSize > robots.length) {
     const toAdd = cfg.fleetSize - robots.length;
+    const added: SimRobot[] = [];
     for (let i = 0; i < toAdd; i++) {
-      robots.push(new SimRobot({
+      added.push(new SimRobot({
         robot_id: `r${nextId++}`,
         robot_type: Math.random() < 0.5 ? "picker" : "hauler",
         ...randomPoint(),
       }));
     }
-    console.log(`scaled up to ${robots.length} robots`);
+    robots.push(...added);
+    scheduleConnections(added);
+    console.log(`scaling up to ${robots.length} robots, connections staggered over up to ${Math.min(added.length * RAMP_MS_PER_ROBOT, RAMP_MAX_WINDOW_MS)}ms`);
   } else if (cfg.fleetSize < robots.length) {
     const toRemove = robots.splice(cfg.fleetSize);
     toRemove.forEach((r) => r.decommission());
