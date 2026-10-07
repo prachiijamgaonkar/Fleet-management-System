@@ -8,6 +8,7 @@ The system consists of:
 * A **Node.js + TypeScript backend** that ingests robot updates, maintains the latest fleet state, and broadcasts updates to connected dashboard clients.
 * A **React + TypeScript dashboard** that provides a live site view, fleet trends, robot search, and a **Needs Attention** view.
 * **Live configuration controls** that allow fleet size and update interval to be changed without modifying code or redeploying the application.
+* **Persisted robot history** — each robot's position, status, and battery are written to a TimescaleDB-backed Postgres database and exposed through `GET /robots/history/:robotId`, so per-robot history survives a backend restart (the optional stretch goal from the challenge). **Why Postgres + TimescaleDB:** the history writes are append-only and always queried by time range per robot — exactly the access pattern TimescaleDB's hypertables are built to optimize — while still being plain Postgres underneath, so no new query language or client library was needed on top of what `pg`/TypeORM already provide.
 
 ## Live Deployment
 
@@ -48,18 +49,45 @@ The complete list of variables, including descriptions, is available in:
 * `server/.env.example`
 * `simulator/.env.example`
 
-The main configuration values are:
+The server and simulator are two separate processes with two separate `.env` files
+(`server/.env` and `simulator/.env`) — they are listed separately below so it's clear which
+variable belongs to which process. A few values (`FLEET_SIZE`, `UPDATE_INTERVAL_MS`) exist in
+**both** files and must be kept consistent between the two; everything else only exists in one.
 
-| Variable                | Component          | Purpose                                                      |
-| ----------------------- | ------------------ | ------------------------------------------------------------ |
-| `FLEET_SIZE`            | Server & Simulator | Initial number of simulated robots                           |
-| `UPDATE_INTERVAL_MS`    | Server & Simulator | Initial robot update interval                                |
-| `PAYLOAD_PADDING_BYTES` | Simulator          | Adds filler bytes to each message for payload-size testing   |
-| `ADMIN_TOKEN`           | Server             | Shared secret required to modify live configuration          |
-| `PORT`                  | Server             | Port on which the backend listens                            |
-| `SIMULATOR_URL`         | Server             | Public simulator URL used for production keep-alive requests |
+### Server (`server/.env`)
 
-`FLEET_SIZE` and `UPDATE_INTERVAL_MS` should be configured consistently between the server and simulator.
+| Variable              | Purpose                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| `PORT`                 | Port on which the backend listens                            |
+| `ADMIN_TOKEN`          | Shared secret required to modify live configuration          |
+| `SIMULATOR_URL`        | Public simulator URL used for production keep-alive requests |
+| `FLEET_SIZE`           | Initial number of simulated robots (must match the simulator's) |
+| `UPDATE_INTERVAL_MS`   | Initial robot update interval (must match the simulator's)   |
+| `DB_HOST`              | Postgres host for the robot history store                    |
+| `DB_PORT`              | Postgres port                                                 |
+| `DB_USERNAME`          | Postgres username                                             |
+| `DB_PASSWORD`          | Postgres password                                             |
+| `DB_NAME`              | Postgres database name                                        |
+| `DB_SSL`               | Set to `true` for a managed Postgres that requires SSL (e.g. Timescale Cloud); leave `false` for local Postgres |
+
+The server will not start without a reachable Postgres database — `DB_HOST` through `DB_NAME`
+are required, not optional. On startup, TypeORM creates the `robot_history` and
+`fleet_activity` tables automatically (`synchronize: true`); converting them into TimescaleDB
+hypertables is a one-time step covered in **Local Development** below.
+
+### Simulator (`simulator/.env`)
+
+| Variable                | Purpose                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| `WS_URL`                 | WebSocket URL of the backend's robot-ingestion endpoint      |
+| `CONTROL_URL`             | HTTP URL of the backend, polled for live config changes      |
+| `FLEET_SIZE`              | Starting fleet size (must match the server's)                |
+| `UPDATE_INTERVAL_MS`      | Starting update interval, in ms (must match the server's)    |
+| `PAYLOAD_PADDING_BYTES`   | Extra filler bytes added to each message, for payload-size testing |
+
+If the server and simulator's `FLEET_SIZE`/`UPDATE_INTERVAL_MS` disagree at startup, the
+simulator self-corrects to the server's value within one polling cycle (~5s) — so a mismatch
+isn't fatal, but it will cause a brief, visible jump right after both processes start.
 
 ---
 
@@ -109,6 +137,42 @@ On Render's free tier, the simulator may first need to wake from inactivity. Thi
 
 ---
 
+# Before You Start: Setup Precautions
+
+A few things worth checking before running this locally, especially on a machine that hasn't
+run this project before:
+
+* **Postgres must be running and reachable before you start the server.** The server calls
+  `AppDataSource.initialize()` on startup and will fail to boot if it can't reach Postgres —
+  this isn't a soft dependency. Confirm `psql -h $DB_HOST -p $DB_PORT -U $DB_USERNAME -d $DB_NAME`
+  connects successfully before running `npm run server`.
+* **The TimescaleDB extension version must match your installed Postgres major version.**
+  `timescaledb-2-postgresql-18` only works against Postgres 18 — check with `psql --version`
+  first. Installing the wrong package version will fail silently at `apt install` or fail
+  later at `CREATE EXTENSION`.
+* **`server/.env` and `simulator/.env` are two different files** (see **Configuration**
+  above) — copy both from their respective `.env.example`, not just one. A missing
+  `simulator/.env` will leave the simulator trying to reach `ws://localhost:8080/ws/robots`
+  by default, which only works if the server's `PORT` is also `8080`.
+* **`FLEET_SIZE` and `UPDATE_INTERVAL_MS` should match between the two `.env` files.** They
+  don't have to — the simulator self-corrects to the server's value within one poll cycle —
+  but mismatched values will cause a brief, visible fleet-size jump right after both processes
+  start, which can look like a bug if you're not expecting it.
+* **Ports must be free.** The server defaults to `8080`; the simulator talks to it over both
+  `WS_URL` and `CONTROL_URL`, which default to that same port. If something else on the
+  machine already uses `8080`, change `PORT` in `server/.env` and update `simulator/.env`'s
+  `WS_URL`/`CONTROL_URL` to match.
+* **Run the server once before creating hypertables.** `create_hypertable()` only works on a
+  table that already exists — the server has to start at least once first so TypeORM's
+  `synchronize: true` creates `robot_history` and `fleet_activity`, *then* the hypertable SQL
+  in **Database Setup (Linux)** below can run.
+* **`DB_SSL` must match the target database.** `true` against a local Postgres (which usually
+  has no SSL configured) will fail to connect; `false` against a managed Postgres that
+  requires SSL (e.g. Timescale Cloud) will also fail to connect. Local Postgres →
+  `DB_SSL=false`; a cloud/managed Postgres → `DB_SSL=true`.
+
+---
+
 # Local Development
 
 ## Prerequisites
@@ -129,6 +193,49 @@ cd Fleet-management-System
 ```bash
 npm install
 ```
+
+## Database Setup (Linux)
+
+The server persists robot history to Postgres and needs the **TimescaleDB** extension for hypertables. These steps assume a Debian/Ubuntu-based Linux machine with Postgres 18 already installed (check with `psql --version`).
+
+Add the TimescaleDB apt repo and install the extension package matching your Postgres major version:
+
+```bash
+sudo apt install gnupg postgresql-common apt-transport-https lsb-release wget
+echo "deb [signed-by=/usr/share/keyrings/timescale.keyring] https://packagecloud.io/timescale/timescaledb/$(lsb_release -is | tr '[:upper:]' '[:lower:]')/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/timescaledb.list
+wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/timescale.keyring
+sudo apt update
+sudo apt install timescaledb-2-postgresql-18
+sudo timescaledb-tune --quiet --yes
+sudo systemctl restart postgresql
+```
+
+Create the local database:
+
+```bash
+createdb robot
+```
+
+Set `server/.env` to point at it (see `server/.env.example`):
+
+```text
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=
+DB_NAME=robot
+DB_SSL=false
+```
+
+Start the server once (`npm run server`, see below) so TypeORM creates the `robot_history` and `fleet_activity` tables, then convert them into hypertables:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+SELECT create_hypertable('robot_history', 'recorded_at', if_not_exists => true);
+SELECT create_hypertable('fleet_activity', 'recorded_at', if_not_exists => true);
+```
+
+This is a one-time step per fresh database — it does not need to be repeated unless the database is recreated.
 
 ## Build the Dashboard
 
@@ -244,7 +351,7 @@ I gave the requirements and direction for each piece, reviewed what Claude produ
 Key architectural decisions were mine, made deliberately rather than accepted as defaults:
 
 * WebSocket instead of a message queue
-* In-memory fleet state instead of a database
+* In-memory fleet state for the live view, with history persisted separately to TimescaleDB for the `/robots/history/:robotId` stretch goal — TimescaleDB was chosen because the history writes are append-only, time-ordered, and queried by time range, which is exactly what its hypertables are built for
 * React instead of vanilla JavaScript once dashboard complexity increased
 * MUI for the dashboard UI
 

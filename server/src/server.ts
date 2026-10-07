@@ -44,14 +44,18 @@ function pingSimulator(): void {
 }
 
 AppDataSource.initialize()
-  .then(() => console.log("database connected"))
-  .catch((err) => console.error("database connection failed:", err));
-
-server.listen(PORT, () => {
-  console.log(`server listening on ${PORT}`);
-  pingSimulator();
-  setInterval(pingSimulator, 10 * 60 * 1000);
-});
+  .then(() => {
+    console.log("database connected");
+    server.listen(PORT, () => {
+      console.log(`server listening on ${PORT}`);
+      pingSimulator();
+      setInterval(pingSimulator, 10 * 60 * 1000);
+    });
+  })
+  .catch((err) => {
+    console.error("database connection failed:", err);
+    process.exit(1);
+  });
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`received ${signal}, flushing buffered writes before exit`);

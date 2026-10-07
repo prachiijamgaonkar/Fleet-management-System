@@ -24,7 +24,23 @@
                     │                                            │
                     │  express.static(web/dist)  ← serves the     │
                     │  React dashboard from the same origin       │
-                    └─────────────────────────────────────────┘
+                    │                                            │
+                    │  ┌──────────────┐                          │
+                    │  │ history      │  buffered batch INSERT    │
+                    │  │ .service.ts  │──────────────────────────┼──┐
+                    │  └──────────────┘  every 2s or 200 points   │  │
+                    └─────────────────────────────────────────┘  │
+                                                                   ▼
+                                                    ┌──────────────────────────┐
+                                                    │  Postgres + TimescaleDB   │
+                                                    │  (Timescale Cloud)        │
+                                                    │  robot_history,           │
+                                                    │  fleet_activity           │
+                                                    │  (hypertables on          │
+                                                    │   recorded_at)            │
+                                                    └──────────────────────────┘
+                                                                   ▲
+                                        GET /robots/history/:robotId (REST, polled by dashboard)
 ```
 
 Two logically separate WebSocket servers (`robotWSS`, `dashboardWSS`) share one HTTP server
@@ -58,6 +74,16 @@ the server is the only thing either of them knows about.
 Total path: one WebSocket message → one Map write → one broadcast loop → (throttled) one
 React state update → one canvas redraw. No polling anywhere in this path — everything is
 pushed.
+
+**In parallel, the same update is buffered for history.** Step 2's handler also calls
+`recordHistoryPoint(robot)`, which pushes the point into an in-memory array — it does **not**
+write to Postgres on every message. A `setInterval` flushes that buffer as one batch `INSERT`
+every 2 seconds, or immediately once the buffer hits 200 points, whichever comes first. This
+keeps the live WebSocket path (steps 1–6 above) completely decoupled from database latency: a
+slow or momentarily unreachable Postgres can only delay when history is durably written, it
+can never block or slow down a robot's position reaching the dashboard. When the dashboard
+later calls `GET /robots/history/:robotId`, that's a separate REST read straight from
+`robot_history`, independent of the live WebSocket feed.
 
 ## What happens when things go wrong
 
@@ -103,6 +129,19 @@ The simulator's own reconnect logic (`ws.on("close")`) retries with exponential 
 decommissioned robots (from a live scale-down) set a `removed` flag first, so their `close`
 handler knows not to reconnect — the same event, two different meanings, disambiguated by
 that flag.
+
+### The history database is unreachable or slow
+
+Because history writes are buffered and flushed on a timer (see the walkthrough above), a
+Postgres outage never blocks the live WebSocket path — robots keep reporting, the dashboard
+keeps updating, `GET /robots/history/:robotId` is the only thing that degrades. If
+`flushHistoryBuffer`'s `INSERT` throws (connection drop, timeout), the error is caught and
+logged, but the batch that failed to write is **not retried or requeued** — it's simply
+dropped, and the buffer moves on to accumulating the next batch. This is a deliberate
+trade-off for a dev/demo-scale system (no queue, no backpressure, no durability guarantee on
+history specifically), and the honest fix for a system that needed to guarantee no history
+loss would be a durable queue (or at least an on-disk retry buffer) in front of the batch
+insert — not something currently in place.
 
 ## What I'd change first if the fleet grew another 10×
 
