@@ -38,9 +38,35 @@ server.on("upgrade", (req, socket, head) => {
 registerRobotSocket(robotWSS);
 registerDashboardSocket(dashboardWSS);
 
-function pingSimulator(): void {
+// A single fire-and-forget ping can land in the simulator's own cold-start
+// rejection window (Render's free tier returns 429 to connections that
+// arrive before a just-woken service is ready) and then silently give up for
+// a full 10 minutes until the next scheduled ping — which can itself land in
+// another bad window, repeating indefinitely. Retrying a few times with a
+// short delay gives the simulator a real chance to finish booting within
+// this one wake-up attempt, instead of depending on the 10-minute interval
+// to eventually get lucky.
+const PING_RETRY_ATTEMPTS = 5;
+const PING_RETRY_DELAY_MS = 6000;
+
+async function pingSimulator(): Promise<void> {
   if (!SIMULATOR_URL) return;
-  fetch(SIMULATOR_URL).catch(() => {});
+  for (let attempt = 1; attempt <= PING_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(SIMULATOR_URL);
+      if (res.ok) {
+        console.log(`simulator ping succeeded (attempt ${attempt}/${PING_RETRY_ATTEMPTS})`);
+        return;
+      }
+      console.error(`simulator ping got HTTP ${res.status} (attempt ${attempt}/${PING_RETRY_ATTEMPTS})`);
+    } catch (err) {
+      console.error(`simulator ping failed: ${(err as Error).message} (attempt ${attempt}/${PING_RETRY_ATTEMPTS})`);
+    }
+    if (attempt < PING_RETRY_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, PING_RETRY_DELAY_MS));
+    }
+  }
+  console.error(`simulator ping gave up after ${PING_RETRY_ATTEMPTS} attempts — will retry on the next scheduled ping`);
 }
 
 AppDataSource.initialize()
@@ -48,8 +74,8 @@ AppDataSource.initialize()
     console.log("database connected");
     server.listen(PORT, () => {
       console.log(`server listening on ${PORT}`);
-      pingSimulator();
-      setInterval(pingSimulator, 10 * 60 * 1000);
+      void pingSimulator();
+      setInterval(() => void pingSimulator(), 10 * 60 * 1000);
     });
   })
   .catch((err) => {

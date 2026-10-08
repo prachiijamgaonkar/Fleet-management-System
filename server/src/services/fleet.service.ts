@@ -35,13 +35,37 @@ export function applyConfigUpdate(
   return { next, rejected };
 }
 
-export function pushConfigToSimulator(config: FleetConfig): void {
+// The simulator has no fallback polling for config changes — this push is
+// the ONLY way a live config change ever reaches it (see server/server.ts's
+// pingSimulator for the same category of problem: a single request that can
+// land in the simulator's cold-start rejection window and be lost). Retrying
+// a few times gives it a real chance instead of silently dropping the
+// operator's change on one bad-timed attempt.
+const PUSH_CONFIG_RETRY_ATTEMPTS = 5;
+const PUSH_CONFIG_RETRY_DELAY_MS = 6000;
+
+export async function pushConfigToSimulator(config: FleetConfig): Promise<void> {
   if (!SIMULATOR_URL) return;
-  fetch(`${SIMULATOR_URL}/config-changed`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config),
-  }).catch((err) => console.error("failed to push config to simulator:", err));
+  for (let attempt = 1; attempt <= PUSH_CONFIG_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${SIMULATOR_URL}/config-changed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      if (res.ok) {
+        console.log(`pushed config to simulator (attempt ${attempt}/${PUSH_CONFIG_RETRY_ATTEMPTS})`);
+        return;
+      }
+      console.error(`push config to simulator got HTTP ${res.status} (attempt ${attempt}/${PUSH_CONFIG_RETRY_ATTEMPTS})`);
+    } catch (err) {
+      console.error(`push config to simulator failed: ${(err as Error).message} (attempt ${attempt}/${PUSH_CONFIG_RETRY_ATTEMPTS})`);
+    }
+    if (attempt < PUSH_CONFIG_RETRY_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, PUSH_CONFIG_RETRY_DELAY_MS));
+    }
+  }
+  console.error(`push config to simulator gave up after ${PUSH_CONFIG_RETRY_ATTEMPTS} attempts — change was NOT delivered`);
 }
 
 export function markRobotOffline(fleet: Map<string, Robot>, robotId: string): Robot | null {

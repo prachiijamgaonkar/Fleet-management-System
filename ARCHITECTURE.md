@@ -37,7 +37,8 @@
                                                     │  robot_history,           │
                                                     │  fleet_activity           │
                                                     │  (hypertables on          │
-                                                    │   recorded_at)            │
+                                                    │   recorded_at, 24h        │
+                                                    │   retention policy)       │
                                                     └──────────────────────────┘
                                                                    ▲
                                         GET /robots/history/:robotId (REST, polled by dashboard)
@@ -84,6 +85,16 @@ slow or momentarily unreachable Postgres can only delay when history is durably 
 can never block or slow down a robot's position reaching the dashboard. When the dashboard
 later calls `GET /robots/history/:robotId`, that's a separate REST read straight from
 `robot_history`, independent of the live WebSocket feed.
+
+**Old history is dropped automatically, independently of any of the above.** The app only ever
+queries the last hour (`HISTORY_WINDOW_MS` in `history.service.ts`), so a TimescaleDB native
+retention policy (`add_retention_policy`, 24h on both `robot_history` and `fleet_activity`)
+drops whole time-partitioned chunks once they age out — not a row-by-row `DELETE`, which
+TimescaleDB's own docs note is slower and needs vacuuming afterward. This runs on TimescaleDB's
+own background scheduler, independent of the server process entirely — it keeps running even if
+the server is down, and needs no code, cron job, or app-level cleanup logic. It matters
+specifically because Timescale Cloud's free tier caps storage at 1 GiB; without this, the
+history tables would grow unbounded until writes started failing.
 
 ## What happens when things go wrong
 

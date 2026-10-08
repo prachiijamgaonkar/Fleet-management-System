@@ -8,7 +8,7 @@ The system consists of:
 * A **Node.js + TypeScript backend** that ingests robot updates, maintains the latest fleet state, and broadcasts updates to connected dashboard clients.
 * A **React + TypeScript dashboard** that provides a live site view, fleet trends, robot search, and a **Needs Attention** view.
 * **Live configuration controls** that allow fleet size and update interval to be changed without modifying code or redeploying the application.
-* **Persisted robot history** — each robot's position, status, and battery are written to a TimescaleDB-backed Postgres database and exposed through `GET /robots/history/:robotId`, so per-robot history survives a backend restart (the optional stretch goal from the challenge). **Why Postgres + TimescaleDB:** the history writes are append-only and always queried by time range per robot — exactly the access pattern TimescaleDB's hypertables are built to optimize — while still being plain Postgres underneath, so no new query language or client library was needed on top of what `pg`/TypeORM already provide.
+* **Persisted robot history** — each robot's position, status, and battery are written to a TimescaleDB-backed Postgres database and exposed through `GET /robots/history/:robotId`, so per-robot history survives a backend restart (the optional stretch goal from the challenge). **Why Postgres + TimescaleDB:** the history writes are append-only and always queried by time range per robot — exactly the access pattern TimescaleDB's hypertables are built to optimize — while still being plain Postgres underneath, so no new query language or client library was needed on top of what `pg`/TypeORM already provide. It also made data retention trivial on a free-tier database with limited storage: a native retention policy (see **Database Setup (Linux)** below) automatically drops old chunks on a schedule, instead of needing a manual cleanup job.
 
 ## Live Deployment
 
@@ -236,6 +236,32 @@ SELECT create_hypertable('fleet_activity', 'recorded_at', if_not_exists => true)
 ```
 
 This is a one-time step per fresh database — it does not need to be repeated unless the database is recreated.
+
+### Data retention
+
+The app only ever queries the last hour of history (`HISTORY_WINDOW_MS` in
+`server/src/services/history.service.ts`), so anything older than that is
+already dead weight — it just sits there consuming storage for no benefit.
+That matters especially on a free-tier managed Postgres (e.g. Timescale
+Cloud's free tier caps storage at 1 GiB): with nothing bounding table growth,
+writes eventually start failing once the cap is hit.
+
+The fix is TimescaleDB's native retention policy, not a manual `DELETE` —
+it drops entire time-partitioned chunks in one atomic operation instead of
+deleting row by row, so it doesn't need vacuuming afterward and stays fast
+regardless of table size. Run once per table, after the hypertable step
+above:
+
+```sql
+SELECT add_retention_policy('robot_history', INTERVAL '24 hours');
+SELECT add_retention_policy('fleet_activity', INTERVAL '24 hours');
+```
+
+24 hours is a generous buffer past the 1-hour window the app actually reads
+(enough to manually inspect something from a few hours back if needed) while
+still keeping storage bounded. Once added, this runs automatically on
+TimescaleDB's own background scheduler — no server code, cron job, or
+restart involved.
 
 ## Build the Dashboard
 

@@ -15,6 +15,6 @@ export function updateConfig(req: Request, res: Response): void {
   }
   const { next, rejected } = applyConfigUpdate(getCurrentConfig(), req.body as Partial<FleetConfig>);
   setCurrentConfig(next);
-  pushConfigToSimulator(next);
+  void pushConfigToSimulator(next); // fire-and-forget: retries happen in the background, don't block the response
   res.json({ ...next, rejected });
 }
